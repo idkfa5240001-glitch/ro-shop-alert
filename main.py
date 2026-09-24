@@ -35,6 +35,15 @@ def save_snapshot(snapshot_dict):
     with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
         json.dump(snapshot_dict, f, ensure_ascii=False, indent=2)
 
+def truncate_store_name(name, max_len=5):
+    """將攤位名稱限制在指定字數內，超過則截斷並加上 .."""
+    if not name:
+        return "未知攤位"
+    name = str(name).strip()
+    if len(name) > max_len:
+        return f"{name[:max_len]}.."
+    return name
+
 def send_login_alert():
     if not WEBHOOK_URL:
         return
@@ -74,11 +83,10 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         }
     ]
 
-    # Discord 行動與桌面最適寬度分隔線（約 18 個半形細線，手機/電腦皆不折行）
     DIVIDER_LINE = "╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶"
 
     if is_card:
-        # --- 卡片類：純單價清單，最多保留 10 筆 ---
+        # --- 卡片類：最多保留 10 筆，店名限制 5 字 ---
         title = f"🃏 【卡片行情】{item_name}"
         if matched_items:
             matched_items.sort(key=lambda x: x.get("itemPrice", 0))
@@ -88,9 +96,9 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             lines = []
             for i, it in enumerate(matched_items[:10], 1):
                 p = it.get("itemPrice", 0)
-                s = it.get("storeName", "未知攤位")
+                s = truncate_store_name(it.get("storeName"))
                 c = it.get("itemCNT", 1)
-                lines.append(f"**{i}.** `{p:,} Z` (x{c}) 🏪 *{s}*")
+                lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
 
             if len(matched_items) > 10:
                 lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
@@ -102,7 +110,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     else:
-        # --- 裝備類：多精煉度物品每個分類最多保留 5 筆，且自動在分類間加線 ---
+        # --- 裝備類：每個分組最多保留 5 筆，店名限制 5 字 ---
         if min_r == max_r and min_r > 0:
             title = f"🛡️ 【裝備行情】+{min_r} {item_name}"
         elif max_r > 0:
@@ -147,16 +155,15 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             lines = []
             for i, it in enumerate(items_r[:5], 1):
                 p = it.get("itemPrice", 0)
-                s = it.get("storeName", "未知攤位")
+                s = truncate_store_name(it.get("storeName"))
                 c = it.get("itemCNT", 1)
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
                 slot_t = f" ({'/'.join(slots)})" if slots else ""
-                lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) 🏪 *{s}*{slot_t}")
+                lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
 
             if len(items_r) > 5:
                 lines.append(f"... 尚有 {len(items_r) - 5} 筆較高價格")
 
-            # 非最後一組才加上分隔線
             if not is_last_group:
                 lines.append(DIVIDER_LINE)
 
@@ -169,11 +176,11 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
 
     embed = {
         "title": title,
-        "description": f"目前架上共 **{len(matched_items)}** 筆符合條件的商品（15 分鐘定時巡查）",
+        "description": f"目前架上共 **{len(matched_items)}** 筆符合條件的商品（30 分鐘定時巡查）",
         "color": 0x2ECC71 if (new_items_count > 0 or removed_items_count > 0) else 0x3498DB,
         "fields": fields,
         "footer": {
-            "text": "RO 露天拍賣比價監控"
+            "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
         },
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     }
