@@ -3,13 +3,13 @@ name: RO Shop Price Monitor
 on:
   schedule:
     - cron: '*/15 * * * *'  # 每 15 分鐘自動巡查一次
-  workflow_dispatch:        # 依然保留隨時手動點按立即查詢
+  workflow_dispatch:        # 支援隨時手動點按立即執行
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # 允許保存與更新已通知紀錄
+      contents: write       # 允許保存與更新快照紀錄檔案
     steps:
       - name: 簽出代碼
         uses: actions/checkout@v4
@@ -34,6 +34,6 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add seen_deals.json || true
-          git commit -m "Update seen deals [skip ci]" || true
+          git add last_snapshot.json || true
+          git commit -m "Update last snapshot [skip ci]" || true
           git push || true
