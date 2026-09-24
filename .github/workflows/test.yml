@@ -7,20 +7,20 @@ jobs:
   test-shop:
     runs-on: ubuntu-latest
     steps:
-      - name: 簽出儲存庫代碼
+      - name: 簽出代碼
         uses: actions/checkout@v4
 
-      - name: 設定 Python 環境
+      - name: 設定 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 安裝相依套件與瀏覽器核心
-        run: |
-          pip install playwright requests
-          playwright install chromium --with-deps
+      - name: 安裝套件
+        run: pip install requests
 
-      - name: 執行 Playwright 測試
+      - name: 執行測試腳本
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RO_COOKIE: ${{ secrets.RO_COOKIE }}
+          RO_VERIFICATION_TOKEN: ${{ secrets.RO_VERIFICATION_TOKEN }}
         run: python test_shop.py
