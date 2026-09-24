@@ -64,6 +64,9 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     min_r = target_config.get("minRefine", 0)
     max_r = target_config.get("maxRefine", 10)
 
+    # 判斷是否為「多精煉跨度裝備」（例如 +7~+10）
+    is_multi_refine = (not is_card) and (max_r > min_r) and (max_r > 0)
+
     # 異動備註
     diff_texts = []
     if new_items_count > 0:
@@ -86,7 +89,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     DIVIDER_LINE = "──────────────────"
 
     if is_card:
-        # --- 卡片類：最多保留 10 筆，店名限制 5 字 ---
+        # 1. 卡片類：無精煉，顯示最多 10 筆
         title = f"🃏 【卡片行情】{item_name}"
         if matched_items:
             matched_items.sort(key=lambda x: x.get("itemPrice", 0))
@@ -109,14 +112,40 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         else:
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
-    else:
-        # --- 裝備類：多精煉度分組，限制 5 筆，限制附魔與店名長度 ---
-        if min_r == max_r and min_r > 0:
-            title = f"🛡️ 【裝備行情】+{min_r} {item_name}"
-        elif max_r > 0:
-            title = f"🛡️ 【裝備行情】+{min_r}~+{max_r} {item_name}"
+    elif not is_multi_refine:
+        # 2. 單一裝備 / 飾品（如 +0 翡翠耳環）：單一分類，顯示最多 10 筆
+        refine_tag = f"+{min_r} " if min_r > 0 else ""
+        title = f"🛡️ 【裝備行情】{refine_tag}{item_name}"
+        if matched_items:
+            matched_items.sort(key=lambda x: x.get("itemPrice", 0))
+            lowest_item = matched_items[0]
+            highest_item = matched_items[-1]
+
+            lines = []
+            for i, it in enumerate(matched_items[:10], 1):
+                p = it.get("itemPrice", 0)
+                r = it.get("itemRefining", 0)
+                s = truncate_text(it.get("storeName", "未知攤位"), 5)
+                c = it.get("itemCNT", 1)
+
+                slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
+                slot_t = f" ({truncate_text('/'.join(slots), 8)})" if slots else ""
+
+                r_str = f"`+{r}` " if r > 0 else ""
+                lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
+
+            if len(matched_items) > 10:
+                lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
+
+            fields.append({"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True})
+            fields.append({"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True})
+            fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
         else:
-            title = f"🛡️ 【裝備行情】{item_name}"
+            fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
+
+    else:
+        # 3. 多精煉跨度裝備（如 +7~+10 神槍手紅色典藏板）：各精煉分組最多保留 5 筆
+        title = f"🛡️ 【裝備行情】+{min_r}~+{max_r} {item_name}"
 
         grouped = {}
         for item in matched_items:
@@ -125,14 +154,11 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 grouped[r] = []
             grouped[r].append(item)
 
-        if min_r > 0 or max_r > 0:
-            display_refines = sorted(list(set(range(min_r, max_r + 1)).union(grouped.keys())))
-            display_refines = [r for r in display_refines if min_r <= r <= max_r]
-        else:
-            display_refines = sorted(grouped.keys())
+        display_refines = sorted(list(set(range(min_r, max_r + 1)).union(grouped.keys())))
+        display_refines = [r for r in display_refines if min_r <= r <= max_r]
 
         if not display_refines:
-            display_refines = [0]
+            display_refines = [min_r]
 
         total_groups = len(display_refines)
 
@@ -158,13 +184,8 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 s = truncate_text(it.get("storeName", "未知攤位"), 5)
                 c = it.get("itemCNT", 1)
 
-                # 處理附魔/插卡：過濾並限制長度，避免整串炸開
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
-                if slots:
-                    slot_str = "/".join(slots)
-                    slot_t = f" ({truncate_text(slot_str, 8)})"
-                else:
-                    slot_t = ""
+                slot_t = f" ({truncate_text('/'.join(slots), 8)})" if slots else ""
 
                 lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
 
