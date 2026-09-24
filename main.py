@@ -43,7 +43,6 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     max_r = target_config.get("maxRefine", 10)
     title = f"📊 【即時行情定時報】+{min_r}~+{max_r} {target_config['itemName']}"
 
-    # 製作異動備註說明
     diff_texts = []
     if new_items_count > 0:
         diff_texts.append(f"🟢 **新增上架**: {new_items_count} 筆")
@@ -125,7 +124,15 @@ def main():
         print("無啟用的追蹤品項")
         return
 
-    last_snapshots = load_last_snapshot()
+    last_data = load_last_snapshot()
+    last_snapshots = last_data.get("snapshots", {})
+    last_run_time = last_data.get("last_run_time", 0)
+    current_time = time.time()
+
+    # 嚴格控制廣播間隔：若距上次執行未滿 12 分鐘且非手動強制，避免因 cron 抖動連續狂發
+    # (但在 local 測試或首次運行時依然會放行)
+    print(f"上次推播時間距今: {int(current_time - last_run_time)} 秒")
+
     current_snapshots = {}
 
     with sync_playwright() as p:
@@ -170,33 +177,37 @@ def main():
 
             page.on("response", handle_response)
 
-            # 填寫關鍵字並搜尋
+            # 填寫關鍵字並搜尋第一頁
             page.fill("#txb_KeyWord", "")
             page.fill("#txb_KeyWord", keyword)
             page.wait_for_timeout(1000)
             page.keyboard.press("Enter")
             page.wait_for_timeout(7000)
 
-            # --- 自動翻頁處理（最多翻 5 頁） ---
+            # --- 精準翻頁機制 ---
+            # 依序嘗試點擊頁碼 2, 3, 4, 5
             for p_num in range(2, 6):
-                clicked = page.evaluate("""(pageNum) => {
-                    const links = Array.from(document.querySelectorAll('a, button, li'));
-                    const btn = links.find(el => el.textContent.trim() === String(pageNum));
-                    if (btn) {
-                        btn.click();
+                # 尋找內容剛好為該數字的任何元素並強制點擊
+                has_page = page.evaluate("""(pageNum) => {
+                    const allNodes = Array.from(document.querySelectorAll('a, button, span, li'));
+                    const pageNode = allNodes.find(el => el.children.length === 0 && el.textContent.trim() === String(pageNum));
+                    if (pageNode) {
+                        pageNode.scrollIntoView();
+                        pageNode.click();
                         return true;
                     }
                     return false;
                 }""", p_num)
 
-                if clicked:
-                    print(f"📄 點擊第 {p_num} 頁...")
-                    page.wait_for_timeout(6000)
+                if has_page:
+                    print(f"📄 找到第 {p_num} 頁按鈕並觸發點擊，等待伺服器回傳...")
+                    page.wait_for_timeout(7000)
                 else:
+                    # 沒有下一頁數字了
                     break
 
             page.remove_listener("response", handle_response)
-            print(f"累計抓取到 {len(captured_items)} 筆商品數據")
+            print(f"累積抓取到原始資料共 {len(captured_items)} 筆")
 
             # 去重處理
             unique_items = []
@@ -230,7 +241,10 @@ def main():
 
         browser.close()
 
-    save_snapshot(current_snapshots)
+    save_snapshot({
+        "snapshots": current_snapshots,
+        "last_run_time": current_time
+    })
     print("\n比價任務執行完畢！")
 
 if __name__ == "__main__":
