@@ -2,14 +2,14 @@ name: RO Shop Price Monitor
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # 每 15 分鐘自動巡查一次
-  workflow_dispatch:        # 支援隨時手動點按立即執行
+    - cron: '0,30 * * * *'  # 明確鎖定每小時的 00分 與 30分 觸發
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # 允許保存快照紀錄
+      contents: write
     steps:
       - name: 簽出代碼
         uses: actions/checkout@v4
