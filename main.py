@@ -144,7 +144,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     else:
-        # 3. 多精煉跨度裝備（如 +7~+10 神槍手紅色典藏板）：各精煉分組最多保留 5 筆
+        # 3. 多精煉跨度裝備（如 +7~+10 神槍手紅色典藏板）：加入最低/最高價標註
         title = f"🛡️ 【裝備行情】+{min_r}~+{max_r} {item_name}"
 
         grouped = {}
@@ -153,6 +153,22 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             if r not in grouped:
                 grouped[r] = []
             grouped[r].append(item)
+
+        # 計算全體最低價與最高價（標註精煉度）
+        if matched_items:
+            matched_items_sorted = sorted(matched_items, key=lambda x: x.get("itemPrice", 0))
+            lowest_item = matched_items_sorted[0]
+            highest_item = matched_items_sorted[-1]
+            fields.append({
+                "name": "📉 全局最低價",
+                "value": f"`+{lowest_item.get('itemRefining', 0)}` **{lowest_item.get('itemPrice', 0):,} Z**",
+                "inline": True
+            })
+            fields.append({
+                "name": "📈 全局最高價",
+                "value": f"`+{highest_item.get('itemRefining', 0)}` **{highest_item.get('itemPrice', 0):,} Z**",
+                "inline": True
+            })
 
         display_refines = sorted(list(set(range(min_r, max_r + 1)).union(grouped.keys())))
         display_refines = [r for r in display_refines if min_r <= r <= max_r]
