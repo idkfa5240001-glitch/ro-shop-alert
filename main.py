@@ -45,9 +45,7 @@ def send_summary_alert(matched_items, target_config):
     title = f"📊 【高精煉行情】+{min_r}~+{max_r} {target_config['itemName']}"
 
     # 依精煉度分組 (+7, +8, +9, +10)
-    grouped = {}
-    for r in range(min_r, max_r + 1):
-        grouped[r] = []
+    grouped = {r: [] for r in range(min_r, max_r + 1)}
 
     for item in matched_items:
         r = item.get("itemRefining", 0)
@@ -68,7 +66,7 @@ def send_summary_alert(matched_items, target_config):
         # 依價格排序
         items_r.sort(key=lambda x: x.get("itemPrice", 0))
         lines = []
-        for i, it in enumerate(items_r[:5], 1):
+        for i, it in enumerate(items_r[:6], 1):
             p = it.get("itemPrice", 0)
             s = it.get("storeName", "未知攤位")
             c = it.get("itemCNT", 1)
@@ -76,8 +74,8 @@ def send_summary_alert(matched_items, target_config):
             slot_t = f" ({'/'.join(slots)})" if slots else ""
             lines.append(f"**{i}.** `{p:,} Z` (x{c}) - {s}{slot_t}")
 
-        if len(items_r) > 5:
-            lines.append(f"... 尚有 {len(items_r) - 5} 筆較高價格")
+        if len(items_r) > 6:
+            lines.append(f"... 尚有 {len(items_r) - 6} 筆較高價格")
 
         lowest_p = items_r[0].get("itemPrice", 0)
         fields.append({
@@ -88,8 +86,8 @@ def send_summary_alert(matched_items, target_config):
 
     embed = {
         "title": title,
-        "description": f"目前架上共找到 **{len(matched_items)}** 筆符合精煉度門檻的商品！",
-        "color": 0x9B59B6,  # 精煉專屬紫色
+        "description": f"目前架上（跨所有分頁）共找到 **{len(matched_items)}** 筆符合條件的商品！",
+        "color": 0x9B59B6,
         "fields": fields,
         "footer": {
             "text": "RO 露天拍賣比價監控"
@@ -157,18 +155,62 @@ def main():
 
             page.on("response", handle_response)
 
+            # 首次查詢
             page.fill("#txb_KeyWord", "")
             page.fill("#txb_KeyWord", keyword)
             page.wait_for_timeout(1000)
             page.keyboard.press("Enter")
             page.wait_for_timeout(7000)
 
+            # --- 自動翻頁處理 ---
+            max_pages = 5  # 最多連翻 5 頁，避免極端狀況死循環
+            current_page = 1
+
+            while current_page < max_pages:
+                # 尋找下一頁按鈕或頁碼（例如下一頁按鈕 > 或下一個數字頁碼）
+                next_page_num = str(current_page + 1)
+                
+                # 判斷頁面上是否有下一頁按鈕或頁碼按鈕
+                has_next = page.evaluate("""(pageNum) => {
+                    const btns = Array.from(document.querySelectorAll('a, button, li, span'));
+                    // 尋找文字為下一個頁碼，或是符號為 > 的可點擊分頁
+                    const nextNumBtn = btns.find(b => b.textContent.trim() === pageNum && !b.classList.contains('active') && !b.disabled);
+                    if (nextNumBtn) {
+                        nextNumBtn.click();
+                        return true;
+                    }
+                    const nextArrow = btns.find(b => (b.textContent.trim() === '>' || b.getAttribute('aria-label') === 'Next') && !b.classList.contains('disabled'));
+                    if (nextArrow) {
+                        nextArrow.click();
+                        return true;
+                    }
+                    return false;
+                }""", next_page_num)
+
+                if has_next:
+                    print(f"📄 發現第 {next_page_num} 頁，正在自動翻頁抓取...")
+                    page.wait_for_timeout(6000)
+                    current_page += 1
+                else:
+                    # 沒有更多頁數了
+                    break
+
             page.remove_listener("response", handle_response)
+            print(f"查詢完成，累計抓取全頁面共 {len(captured_items)} 筆商品。")
+
+            # --- 去除跨分頁可能重複的項目 ---
+            unique_items = []
+            seen_ssi2 = set()
+            for it in captured_items:
+                uid = it.get("SSI2") or f"{it.get('storeName')}_{it.get('itemPrice')}_{it.get('itemRefining')}"
+                if uid not in seen_ssi2:
+                    seen_ssi2.add(uid)
+                    unique_items.append(it)
 
             matched_items = []
             has_new_item = False
 
-            for item in captured_items:
+            for item in unique_items:
                 price = item.get("itemPrice", 0)
                 refine = item.get("itemRefining", 0)
                 ssi2 = item.get("SSI2", "")
@@ -182,7 +224,7 @@ def main():
 
             if matched_items:
                 if has_new_item:
-                    print(f"🎯 發現有新上架或變動，發送分類行情推播（共 {len(matched_items)} 筆）！")
+                    print(f"🎯 發現有新上架或變動，發送跨頁彙整行情推播（共 {len(matched_items)} 筆）！")
                     send_summary_alert(matched_items, target)
                 else:
                     print(f"⚪ 架上共 {len(matched_items)} 筆符合，但無新異動，略過通知。")
