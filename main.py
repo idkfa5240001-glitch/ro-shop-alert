@@ -74,8 +74,11 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         }
     ]
 
+    # Discord 行動與桌面最適寬度分隔線（約 18 個半形細線，手機/電腦皆不折行）
+    DIVIDER_LINE = "╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶"
+
     if is_card:
-        # --- 卡片類：不看精煉度，至少顯示 10 筆 ---
+        # --- 卡片類：純單價清單，最多保留 10 筆 ---
         title = f"🃏 【卡片行情】{item_name}"
         if matched_items:
             matched_items.sort(key=lambda x: x.get("itemPrice", 0))
@@ -87,19 +90,19 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 p = it.get("itemPrice", 0)
                 s = it.get("storeName", "未知攤位")
                 c = it.get("itemCNT", 1)
-                lines.append(f"**{i}.** `{p:,} Z` (x{c}) - {s}")
+                lines.append(f"**{i}.** `{p:,} Z` (x{c}) 🏪 *{s}*")
 
             if len(matched_items) > 10:
                 lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
 
             fields.append({"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True})
             fields.append({"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "🏪 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
+            fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
         else:
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     else:
-        # --- 裝備類：明確顯示精煉度，各精煉層級至少顯示 10 筆 ---
+        # --- 裝備類：多精煉度物品每個分類最多保留 5 筆，且自動在分類間加線 ---
         if min_r == max_r and min_r > 0:
             title = f"🛡️ 【裝備行情】+{min_r} {item_name}"
         elif max_r > 0:
@@ -107,7 +110,6 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         else:
             title = f"🛡️ 【裝備行情】{item_name}"
 
-        # 依精煉度分組
         grouped = {}
         for item in matched_items:
             r = item.get("itemRefining", 0)
@@ -124,29 +126,39 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         if not display_refines:
             display_refines = [0]
 
-        for r in display_refines:
+        total_groups = len(display_refines)
+
+        for idx, r in enumerate(display_refines):
+            is_last_group = (idx == total_groups - 1)
             items_r = grouped.get(r, [])
+
             if not items_r:
+                content = "*目前架上無販售*"
+                if not is_last_group:
+                    content += f"\n{DIVIDER_LINE}"
                 fields.append({
                     "name": f"🔹 +{r} {item_name}",
-                    "value": "*目前架上無販售*",
+                    "value": content,
                     "inline": False
                 })
                 continue
 
             items_r.sort(key=lambda x: x.get("itemPrice", 0))
             lines = []
-            # 至少顯示 10 筆
-            for i, it in enumerate(items_r[:10], 1):
+            for i, it in enumerate(items_r[:5], 1):
                 p = it.get("itemPrice", 0)
                 s = it.get("storeName", "未知攤位")
                 c = it.get("itemCNT", 1)
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
                 slot_t = f" ({'/'.join(slots)})" if slots else ""
-                lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) - {s}{slot_t}")
+                lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) 🏪 *{s}*{slot_t}")
 
-            if len(items_r) > 10:
-                lines.append(f"... 尚有 {len(items_r) - 10} 筆較高價格")
+            if len(items_r) > 5:
+                lines.append(f"... 尚有 {len(items_r) - 5} 筆較高價格")
+
+            # 非最後一組才加上分隔線
+            if not is_last_group:
+                lines.append(DIVIDER_LINE)
 
             lowest_p = items_r[0].get("itemPrice", 0)
             fields.append({
@@ -265,7 +277,7 @@ def main():
 
             captured_items = search_item_with_pages(page, query_text)
 
-            # 去重
+            # 去重處理
             unique_items = []
             seen_ids = set()
             for it in captured_items:
