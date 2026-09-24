@@ -40,48 +40,57 @@ def send_summary_alert(matched_items, target_config):
     if not WEBHOOK_URL or not matched_items:
         return
 
-    # 按單價由低到高排序
-    matched_items.sort(key=lambda x: x.get("itemPrice", 0))
+    min_r = target_config.get("minRefine", 7)
+    max_r = target_config.get("maxRefine", 10)
+    title = f"📊 【高精煉行情】+{min_r}~+{max_r} {target_config['itemName']}"
 
-    lowest_item = matched_items[0]
-    highest_item = matched_items[-1]
+    # 依精煉度分組 (+7, +8, +9, +10)
+    grouped = {}
+    for r in range(min_r, max_r + 1):
+        grouped[r] = []
 
-    min_r = target_config.get("minRefine", 0)
-    max_r = target_config.get("maxRefine", 99)
-    if min_r == max_r and min_r > 0:
-        refine_str = f"+{min_r} "
-    elif min_r > 0:
-        refine_str = f"+{min_r}~+{max_r} "
-    else:
-        refine_str = ""
+    for item in matched_items:
+        r = item.get("itemRefining", 0)
+        if r in grouped:
+            grouped[r].append(item)
 
-    title = f"📊 【行情回報】{refine_str}{target_config['itemName']}"
+    fields = []
+    for r in range(min_r, max_r + 1):
+        items_r = grouped[r]
+        if not items_r:
+            fields.append({
+                "name": f"🔹 +{r} {target_config['itemName']}",
+                "value": "*目前架上無販售*",
+                "inline": False
+            })
+            continue
 
-    # 組合架上清單（最多列出前 10 筆）
-    lines = []
-    for i, item in enumerate(matched_items[:10], 1):
-        price = item.get("itemPrice", 0)
-        store = item.get("storeName", "未知攤位")
-        cnt = item.get("itemCNT", 1)
-        refine = f"+{item.get('itemRefining')} " if item.get("itemRefining") else ""
-        slots = [item.get(f"slot_{k}") for k in range(1, 5) if item.get(f"slot_{k}")]
-        slot_text = f" ({'/'.join(slots)})" if slots else ""
-        lines.append(f"**{i}.** `{price:,} Z` (x{cnt}) - {store}{slot_text}")
+        # 依價格排序
+        items_r.sort(key=lambda x: x.get("itemPrice", 0))
+        lines = []
+        for i, it in enumerate(items_r[:5], 1):
+            p = it.get("itemPrice", 0)
+            s = it.get("storeName", "未知攤位")
+            c = it.get("itemCNT", 1)
+            slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
+            slot_t = f" ({'/'.join(slots)})" if slots else ""
+            lines.append(f"**{i}.** `{p:,} Z` (x{c}) - {s}{slot_t}")
 
-    if len(matched_items) > 10:
-        lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
+        if len(items_r) > 5:
+            lines.append(f"... 尚有 {len(items_r) - 5} 筆較高價格")
 
-    list_content = "\n".join(lines)
+        lowest_p = items_r[0].get("itemPrice", 0)
+        fields.append({
+            "name": f"🔹 +{r}（共 {len(items_r)} 筆，最低 `{lowest_p:,} Z`）",
+            "value": "\n".join(lines),
+            "inline": False
+        })
 
     embed = {
         "title": title,
-        "description": f"目前架上共找到 **{len(matched_items)}** 筆符合條件的商品！",
-        "color": 0x3498DB,
-        "fields": [
-            {"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True},
-            {"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True},
-            {"name": "🏪 架上所有販售列表（由低至高）", "value": list_content, "inline": False}
-        ],
+        "description": f"目前架上共找到 **{len(matched_items)}** 筆符合精煉度門檻的商品！",
+        "color": 0x9B59B6,  # 精煉專屬紫色
+        "fields": fields,
         "footer": {
             "text": "RO 露天拍賣比價監控"
         },
@@ -165,7 +174,6 @@ def main():
                 ssi2 = item.get("SSI2", "")
                 unique_key = f"{item.get('itemName')}_{refine}_{price}_{item.get('storeName')}_{ssi2}"
 
-                # 篩選精煉度與價格區間
                 if min_refine <= refine <= max_refine and price <= max_price:
                     matched_items.append(item)
                     if unique_key not in seen_deals:
@@ -174,7 +182,7 @@ def main():
 
             if matched_items:
                 if has_new_item:
-                    print(f"🎯 發現有新上架或變動，發送彙整行情推播（共 {len(matched_items)} 筆）！")
+                    print(f"🎯 發現有新上架或變動，發送分類行情推播（共 {len(matched_items)} 筆）！")
                     send_summary_alert(matched_items, target)
                 else:
                     print(f"⚪ 架上共 {len(matched_items)} 筆符合，但無新異動，略過通知。")
