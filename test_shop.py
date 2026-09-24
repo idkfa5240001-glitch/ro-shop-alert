@@ -23,7 +23,6 @@ def parse_cookies(cookie_string):
 def run():
     with sync_playwright() as p:
         print("啟動虛擬 Chrome 瀏覽器...")
-        # 加上避開自動化偵測的啟動參數
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -45,7 +44,7 @@ def run():
 
         page = context.new_page()
 
-        # 抹除 webdriver 特徵，避免被 Cloudflare / 網站反爬機制直接攔截
+        # 抹除自動化標記
         page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
@@ -68,7 +67,6 @@ def run():
         page.on("response", handle_response)
 
         print("正在開啟露天拍賣網頁...")
-        # 改為 domcontentloaded，避免被背景輪詢卡死逾時
         page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
 
         print("等待前端頁面渲染與驗證初始化...")
@@ -77,18 +75,25 @@ def run():
         # 輸入關鍵字
         print(f"輸入物品名稱：{TARGET_ITEM}")
         page.fill("#txb_KeyWord", TARGET_ITEM)
+        page.wait_for_timeout(1000)
 
-        # 點擊查詢按鈕
-        print("點擊查詢按鈕...")
-        page.click("button:has-text('查詢'), input[value='查詢'], #btn_Search")
+        # 觸發查詢：先嘗試對輸入框按 Enter，再嘗試點擊文字為「查詢」的所有標籤 (a, button, input)
+        print("觸發查詢...")
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1000)
+
+        # 如果 Enter 沒有觸發請求，透過 JS 精準找出文字含有「查詢」的元素觸發點擊
+        page.evaluate("""() => {
+            const elements = Array.from(document.querySelectorAll('a, button, input, div'));
+            const searchBtn = elements.find(el => el.textContent.trim() === '查詢' || el.value === '查詢');
+            if (searchBtn) {
+                searchBtn.click();
+            }
+        }""")
 
         # 等待查詢 API 回傳
         print("等待查詢結果回傳...")
-        page.wait_for_timeout(8000)
-
-        # 關閉瀏覽器前若沒抓到，拍張截圖印出頁面訊息方便除錯
-        if not captured_data:
-            print("目前網頁標題:", page.title())
+        page.wait_for_timeout(10000)
 
         browser.close()
 
@@ -112,7 +117,7 @@ def run():
                 requests.post(WEBHOOK_URL, json={"content": msg})
                 print("已成功發送 Discord 測試通知！")
         else:
-            print("❌ 未攔截到商品列表，可能按鈕尚未觸發或伺服器 IP 被限制。")
+            print("❌ 未攔截到商品列表，可能按鈕觸發後需要額外驗證或伺服器回應未送達。")
 
 if __name__ == "__main__":
     run()
