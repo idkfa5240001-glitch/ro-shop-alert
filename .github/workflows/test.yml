@@ -15,10 +15,12 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 安裝相依套件
-        run: pip install requests
+      - name: 安裝相依套件與瀏覽器核心
+        run: |
+          pip install playwright requests
+          playwright install chromium --with-deps
 
-      - name: 執行測試腳本
+      - name: 執行 Playwright 測試
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python test_shop.py
