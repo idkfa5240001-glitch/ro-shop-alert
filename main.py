@@ -35,14 +35,14 @@ def save_snapshot(snapshot_dict):
     with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
         json.dump(snapshot_dict, f, ensure_ascii=False, indent=2)
 
-def truncate_store_name(name, max_len=5):
-    """將攤位名稱限制在指定字數內，超過則截斷並加上 .."""
-    if not name:
-        return "未知攤位"
-    name = str(name).strip()
-    if len(name) > max_len:
-        return f"{name[:max_len]}.."
-    return name
+def truncate_text(text, max_len=5):
+    """通用字串截斷函數"""
+    if not text:
+        return ""
+    text = str(text).strip()
+    if len(text) > max_len:
+        return f"{text[:max_len]}.."
+    return text
 
 def send_login_alert():
     if not WEBHOOK_URL:
@@ -83,7 +83,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         }
     ]
 
-    DIVIDER_LINE = "╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶╶"
+    DIVIDER_LINE = "──────────────────"
 
     if is_card:
         # --- 卡片類：最多保留 10 筆，店名限制 5 字 ---
@@ -96,7 +96,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             lines = []
             for i, it in enumerate(matched_items[:10], 1):
                 p = it.get("itemPrice", 0)
-                s = truncate_store_name(it.get("storeName"))
+                s = truncate_text(it.get("storeName", "未知攤位"), 5)
                 c = it.get("itemCNT", 1)
                 lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
 
@@ -110,7 +110,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     else:
-        # --- 裝備類：每個分組最多保留 5 筆，店名限制 5 字 ---
+        # --- 裝備類：多精煉度分組，限制 5 筆，限制附魔與店名長度 ---
         if min_r == max_r and min_r > 0:
             title = f"🛡️ 【裝備行情】+{min_r} {item_name}"
         elif max_r > 0:
@@ -155,10 +155,17 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             lines = []
             for i, it in enumerate(items_r[:5], 1):
                 p = it.get("itemPrice", 0)
-                s = truncate_store_name(it.get("storeName"))
+                s = truncate_text(it.get("storeName", "未知攤位"), 5)
                 c = it.get("itemCNT", 1)
+
+                # 處理附魔/插卡：過濾並限制長度，避免整串炸開
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
-                slot_t = f" ({'/'.join(slots)})" if slots else ""
+                if slots:
+                    slot_str = "/".join(slots)
+                    slot_t = f" ({truncate_text(slot_str, 8)})"
+                else:
+                    slot_t = ""
+
                 lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
 
             if len(items_r) > 5:
