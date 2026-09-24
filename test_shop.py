@@ -23,10 +23,18 @@ def parse_cookies(cookie_string):
 def run():
     with sync_playwright() as p:
         print("啟動虛擬 Chrome 瀏覽器...")
-        browser = p.chromium.launch(headless=True)
+        # 加上避開自動化偵測的啟動參數
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
+        )
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800}
+            viewport={"width": 1366, "height": 768}
         )
 
         # 注入登入 Cookie
@@ -36,6 +44,14 @@ def run():
             print(f"已成功注入 {len(cookies)} 組身分憑證 Cookie")
 
         page = context.new_page()
+
+        # 抹除 webdriver 特徵，避免被 Cloudflare / 網站反爬機制直接攔截
+        page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+
         captured_data = []
 
         # 攔截包含查詢結果的網路封包
@@ -52,11 +68,11 @@ def run():
         page.on("response", handle_response)
 
         print("正在開啟露天拍賣網頁...")
-        page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="networkidle", timeout=60000)
+        # 改為 domcontentloaded，避免被背景輪詢卡死逾時
+        page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
 
-        # 等待網頁前端驗證初始化（轉圈圈驗證完成）
-        print("等待前端驗證初始化...")
-        page.wait_for_timeout(6000)
+        print("等待前端頁面渲染與驗證初始化...")
+        page.wait_for_timeout(8000)
 
         # 輸入關鍵字
         print(f"輸入物品名稱：{TARGET_ITEM}")
@@ -67,7 +83,12 @@ def run():
         page.click("button:has-text('查詢'), input[value='查詢'], #btn_Search")
 
         # 等待查詢 API 回傳
+        print("等待查詢結果回傳...")
         page.wait_for_timeout(8000)
+
+        # 關閉瀏覽器前若沒抓到，拍張截圖印出頁面訊息方便除錯
+        if not captured_data:
+            print("目前網頁標題:", page.title())
 
         browser.close()
 
@@ -91,7 +112,7 @@ def run():
                 requests.post(WEBHOOK_URL, json={"content": msg})
                 print("已成功發送 Discord 測試通知！")
         else:
-            print("❌ 未攔截到商品列表，可能按鈕觸發有誤或需延長等待時間。")
+            print("❌ 未攔截到商品列表，可能按鈕尚未觸發或伺服器 IP 被限制。")
 
 if __name__ == "__main__":
     run()
