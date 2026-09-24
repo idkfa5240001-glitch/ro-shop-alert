@@ -9,7 +9,7 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # 允許保存與更新快照紀錄檔案
+      contents: write       # 允許保存快照紀錄
     steps:
       - name: 簽出代碼
         uses: actions/checkout@v4
