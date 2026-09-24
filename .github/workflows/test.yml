@@ -1,0 +1,24 @@
+name: Test RO Shop API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-shop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 簽出儲存庫代碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 安裝相依套件
+        run: pip install requests
+
+      - name: 執行測試腳本
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python test_shop.py
