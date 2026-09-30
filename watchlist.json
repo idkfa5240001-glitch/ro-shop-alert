@@ -14,21 +14,5 @@
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
-  },
-  {
-    "itemName": "來福槍",
-    "minRefine": 0,
-    "maxRefine": 0,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
-  },
-  {
-    "itemName": "★來福槍",
-    "minRefine": 0,
-    "maxRefine": 10,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
   }
 ]
