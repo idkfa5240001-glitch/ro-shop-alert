@@ -8,17 +8,17 @@
     "enabled": true
   },
   {
-    "itemName": "神槍手毒物典藏板",
-    "minRefine": 5,
-    "maxRefine": 10,
+    "itemName": "鴞裊男爵卡片",
+    "minRefine": 0,
+    "maxRefine": 0,
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
   },
   {
-    "itemName": "鴞裊男爵卡片",
-    "minRefine": 0,
-    "maxRefine": 0,
+    "itemName": "角落的黑輪-繪師典藏板",
+    "minRefine": 8,
+    "maxRefine": 8,
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
