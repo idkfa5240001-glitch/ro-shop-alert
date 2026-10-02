@@ -1,7 +1,15 @@
 [
   {
     "itemName": "神槍手紅色典藏板",
-    "minRefine": 7,
+    "minRefine": 5,
+    "maxRefine": 10,
+    "maxPrice": 999999999,
+    "server": "529",
+    "enabled": true
+  },
+  {
+    "itemName": "神槍手毒物典藏板",
+    "minRefine": 5,
     "maxRefine": 10,
     "maxPrice": 999999999,
     "server": "529",
