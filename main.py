@@ -113,8 +113,8 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     elif not is_multi_refine:
-        # 2. 單一裝備 / 飾品（如 +0 翡翠耳環）：單一分類，顯示最多 10 筆
-        refine_tag = f"+{min_r} " if min_r > 0 else ""
+        # 2. 單一裝備 / 飾品 / 精準搜尋品項：單一分類，顯示最多 10 筆
+        refine_tag = f"+{min_r} " if (min_r > 0 and not item_name.startswith("+")) else ""
         title = f"🛡️ 【裝備行情】{refine_tag}{item_name}"
         if matched_items:
             matched_items.sort(key=lambda x: x.get("itemPrice", 0))
@@ -129,7 +129,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 c = it.get("itemCNT", 1)
 
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
-                slot_t = f" ({truncate_text('/'.join(slots), 8)})" if slots else ""
+                slot_t = f" ({truncate_text('/'.join(slots), 12)})" if slots else ""
 
                 r_str = f"`+{r}` " if r > 0 else ""
                 lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
@@ -144,7 +144,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     else:
-        # 3. 多精煉跨度裝備（如 +7~+10 神槍手紅色典藏板）：每個精煉等級獨立顯示各自的最低與最高價
+        # 3. 多精煉跨度裝備：每個精煉等級獨立顯示
         title = f"🛡️ 【裝備行情】+{min_r}~+{max_r} {item_name}"
 
         grouped = {}
@@ -182,7 +182,6 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             highest_p = items_r[-1].get("itemPrice", 0)
 
             lines = []
-            # 在清單上方直接顯示該精煉分組的獨立最低價與最高價
             lines.append(f"📉 最低: `{lowest_p:,} Z` ｜ 📈 最高: `{highest_p:,} Z`")
 
             for i, it in enumerate(items_r[:5], 1):
@@ -303,8 +302,12 @@ def main():
         for target in active_targets:
             item_name = target["itemName"]
             is_card = item_name.endswith("卡片")
+            exact_query = target.get("exactQuery")
 
-            if is_card:
+            # 若有指定 exactQuery，100% 綁定輸入該精準字串（如 +9 遠征隊鎧甲%賢者精髓Ⅱ 2Lv）
+            if exact_query:
+                query_text = exact_query
+            elif is_card:
                 query_text = f'"{item_name}"'
             else:
                 query_text = item_name
@@ -331,20 +334,27 @@ def main():
             for it in unique_items:
                 r = it.get("itemRefining", 0)
                 p = it.get("itemPrice", 0)
-                if is_card:
-                    if it.get("itemName") == item_name and p <= max_price:
+                raw_name = it.get("itemName", "")
+                
+                # 如果是 exactQuery 查詢，官網已經做過多條件過濾，直接確認價格與精煉
+                if exact_query:
+                    if (min_refine <= r <= max_refine or min_refine == 0) and p <= max_price:
+                        matched_items.append(it)
+                elif is_card:
+                    if raw_name == item_name and p <= max_price:
                         matched_items.append(it)
                 else:
-                    if min_refine <= r <= max_refine and p <= max_price:
+                    if (raw_name == item_name or raw_name.startswith(f"{item_name} ")) and (min_refine <= r <= max_refine) and (p <= max_price):
                         matched_items.append(it)
 
+            snapshot_id = exact_query if exact_query else item_name
             current_keys = {
                 f"{it.get('itemName')}_+{it.get('itemRefining', 0)}_{it.get('itemPrice')}_{it.get('storeName')}"
                 for it in matched_items
             }
-            current_snapshots[item_name] = list(current_keys)
+            current_snapshots[snapshot_id] = list(current_keys)
 
-            last_keys = set(last_snapshots.get(item_name, []))
+            last_keys = set(last_snapshots.get(snapshot_id, []))
             new_items_count = len(current_keys - last_keys) if last_keys else 0
             removed_items_count = len(last_keys - current_keys) if last_keys else 0
 
