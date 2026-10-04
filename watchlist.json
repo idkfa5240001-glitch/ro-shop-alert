@@ -1,13 +1,5 @@
 [
   {
-    "itemName": "神槍手紅色典藏板",
-    "minRefine": 5,
-    "maxRefine": 10,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
-  },
-  {
     "itemName": "鴞裊男爵卡片",
     "minRefine": 0,
     "maxRefine": 0,
@@ -19,6 +11,15 @@
     "itemName": "角落的黑輪-繪師典藏板",
     "minRefine": 8,
     "maxRefine": 8,
+    "maxPrice": 999999999,
+    "server": "529",
+    "enabled": true
+  },
+  {
+    "itemName": "遠征隊鎧甲",
+    "minRefine": 9,
+    "maxRefine": 9,
+    "requiredSlot": "賢者精髓Ⅱ 2Lv",
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
