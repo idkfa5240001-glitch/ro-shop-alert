@@ -16,10 +16,10 @@
     "enabled": true
   },
   {
-    "itemName": "遠征隊鎧甲",
+    "itemName": "+9 遠征隊鎧甲（賢者精髓Ⅱ 2Lv）",
+    "exactQuery": "+9 遠征隊鎧甲%賢者精髓Ⅱ 2Lv",
     "minRefine": 9,
     "maxRefine": 9,
-    "requiredSlot": "賢者精髓Ⅱ 2Lv",
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
