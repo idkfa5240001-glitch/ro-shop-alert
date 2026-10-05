@@ -8,14 +8,6 @@
     "enabled": true
   },
   {
-    "itemName": "角落的黑輪-繪師典藏板",
-    "minRefine": 8,
-    "maxRefine": 8,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
-  },
-  {
     "itemName": "+9 遠征隊鎧甲（賢者精髓Ⅱ 2Lv）",
     "exactQuery": "+9 遠征隊鎧甲%賢者精髓Ⅱ 2Lv",
     "minRefine": 9,
