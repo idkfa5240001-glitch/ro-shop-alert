@@ -63,9 +63,18 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     is_card = item_name.endswith("卡片")
     min_r = target_config.get("minRefine", 0)
     max_r = target_config.get("maxRefine", 10)
+    price_alerts = target_config.get("priceAlerts", {})
 
-    # 判斷是否為「多精煉跨度裝備」（例如 +7~+10）
+    # 判斷是否為「多精煉跨度裝備」（例如 +6~+7）
     is_multi_refine = (not is_card) and (max_r > min_r) and (max_r > 0)
+
+    # 檢查是否有命中自訂價格警報
+    triggered_alerts = []
+    for it in matched_items:
+        r = str(it.get("itemRefining", 0))
+        p = it.get("itemPrice", 0)
+        if r in price_alerts and p <= price_alerts[r]:
+            triggered_alerts.append((r, p, price_alerts[r]))
 
     # 異動備註
     diff_texts = []
@@ -78,13 +87,24 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     else:
         diff_summary = " | ".join(diff_texts)
 
-    fields = [
-        {
-            "name": "🔔 本次異動備註",
-            "value": diff_summary,
+    fields = []
+
+    # 若觸發特價警報，置頂加入醒目標籤
+    if triggered_alerts:
+        alert_msg = []
+        for r, p, thresh in triggered_alerts:
+            alert_msg.append(f"🔥 `+{r}` 出現 `{p:,} Z`（低於門檻 `{thresh:,} Z`）")
+        fields.append({
+            "name": "🚨【超值低價警報】",
+            "value": "\n".join(alert_msg),
             "inline": False
-        }
-    ]
+        })
+
+    fields.append({
+        "name": "🔔 本次異動備註",
+        "value": diff_summary,
+        "inline": False
+    })
 
     DIVIDER_LINE = "──────────────────"
 
@@ -113,7 +133,7 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
 
     elif not is_multi_refine:
-        # 2. 單一裝備 / 飾品 / 精準搜尋品項：單一分類，顯示最多 10 筆
+        # 2. 單一裝備 / 飾品：單一分類，顯示最多 10 筆
         refine_tag = f"+{min_r} " if (min_r > 0 and not item_name.startswith("+")) else ""
         title = f"🛡️ 【裝備行情】{refine_tag}{item_name}"
         if matched_items:
@@ -184,6 +204,11 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             lines = []
             lines.append(f"📉 最低: `{lowest_p:,} Z` ｜ 📈 最高: `{highest_p:,} Z`")
 
+            # 門檻警報提示文字
+            r_str = str(r)
+            if r_str in price_alerts:
+                lines.append(f"🎯 目標警報價: 低於 `{price_alerts[r_str]:,} Z`")
+
             for i, it in enumerate(items_r[:5], 1):
                 p = it.get("itemPrice", 0)
                 s = truncate_text(it.get("storeName", "未知攤位"), 5)
@@ -192,7 +217,11 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
                 slot_t = f" ({truncate_text('/'.join(slots), 8)})" if slots else ""
 
-                lines.append(f"**{i}.** `+{r}` `{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
+                # 標記撿漏商品
+                is_bargain = (r_str in price_alerts and p <= price_alerts[r_str])
+                bargain_tag = " 🔥" if is_bargain else ""
+
+                lines.append(f"**{i}.** `+{r}` `{p:,} Z`{bargain_tag} (x{c}) ｜ *{s}*{slot_t}")
 
             if len(items_r) > 5:
                 lines.append(f"... 尚有 {len(items_r) - 5} 筆較高價格")
@@ -206,10 +235,18 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
                 "inline": False
             })
 
+    # 決定卡片顏色：觸發撿漏警報時為鮮紅橙色(0xE67E22)，否則為原色
+    if triggered_alerts:
+        embed_color = 0xE67E22
+    elif new_items_count > 0 or removed_items_count > 0:
+        embed_color = 0x2ECC71
+    else:
+        embed_color = 0x3498DB
+
     embed = {
         "title": title,
         "description": f"目前架上共 **{len(matched_items)}** 筆符合條件的商品（30 分鐘定時巡查）",
-        "color": 0x2ECC71 if (new_items_count > 0 or removed_items_count > 0) else 0x3498DB,
+        "color": embed_color,
         "fields": fields,
         "footer": {
             "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
@@ -304,7 +341,6 @@ def main():
             is_card = item_name.endswith("卡片")
             exact_query = target.get("exactQuery")
 
-            # 若有指定 exactQuery，100% 綁定輸入該精準字串（如 +9 遠征隊鎧甲%賢者精髓Ⅱ 2Lv）
             if exact_query:
                 query_text = exact_query
             elif is_card:
@@ -336,7 +372,6 @@ def main():
                 p = it.get("itemPrice", 0)
                 raw_name = it.get("itemName", "")
                 
-                # 如果是 exactQuery 查詢，官網已經做過多條件過濾，直接確認價格與精煉
                 if exact_query:
                     if (min_refine <= r <= max_refine or min_refine == 0) and p <= max_price:
                         matched_items.append(it)
