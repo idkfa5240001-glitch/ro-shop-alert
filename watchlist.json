@@ -23,5 +23,17 @@
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
+  },
+  {
+    "itemName": "神槍手銀色典藏板",
+    "minRefine": 6,
+    "maxRefine": 7,
+    "maxPrice": 999999999,
+    "priceAlerts": {
+      "6": 7000000,
+      "7": 15000000
+    },
+    "server": "529",
+    "enabled": true
   }
 ]
