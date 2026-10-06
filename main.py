@@ -105,12 +105,6 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
             "inline": False
         })
 
-    fields.append({
-        "name": "──────────────────",
-        "value": "",
-        "inline": False
-    })
-
     # 2. 收購區塊（由高到低排序，收購出價最高者排前面）
     if buy_items:
         buy_items.sort(key=lambda x: x.get("itemPrice", 0), reverse=True)
@@ -215,65 +209,4 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             for i, it in enumerate(matched_items[:10], 1):
                 p = it.get("itemPrice", 0)
                 r = it.get("itemRefining", 0)
-                s = truncate_text(it.get("storeName", "未知攤位"), 5)
-                c = it.get("itemCNT", 1)
-
-                slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
-                slot_t = f" ({truncate_text('/'.join(slots), 12)})" if slots else ""
-
-                r_str = f"`+{r}` " if r > 0 else ""
-                lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
-
-            if len(matched_items) > 10:
-                lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
-
-            fields.append({"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
-        else:
-            fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
-
-    embed = {
-        "title": title,
-        "description": f"目前架上共 **{len(matched_items)}** 筆符合條件的商品（30 分鐘定時巡查）",
-        "color": 0x2ECC71 if (new_items_count > 0 or removed_items_count > 0) else 0x3498DB,
-        "fields": fields,
-        "footer": {
-            "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
-        },
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-    requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
-
-def search_item_with_pages(page, query_text):
-    captured_items = []
-
-    def handle_response(response):
-        if "forAjax_shopDeal" in response.url:
-            try:
-                data = response.json()
-                items = data.get("dt")
-                if items:
-                    captured_items.extend(items)
-            except Exception:
-                pass
-
-    page.on("response", handle_response)
-
-    page.fill("#txb_KeyWord", "")
-    page.fill("#txb_KeyWord", query_text)
-    page.wait_for_timeout(1000)
-    page.keyboard.press("Enter")
-    page.wait_for_timeout(7000)
-
-    # 翻頁 (2~5 頁)
-    for p_num in range(2, 6):
-        has_page = page.evaluate("""(pageNum) => {
-            const allNodes = Array.from(document.querySelectorAll('a, button, span, li'));
-            const pageNode = allNodes.find(el => el.children.length === 0 && el.textContent.trim() === String(pageNum));
-            if (pageNode) {
-                pageNode.scrollIntoView();
-                pageNode.click();
-                return true;
-            }
-            return false
+                s = truncate_text(it.get("storeName", "未知攤位
