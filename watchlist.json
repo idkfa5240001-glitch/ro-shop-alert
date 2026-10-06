@@ -8,23 +8,8 @@
     "enabled": true
   },
   {
-    "itemName": "+9 遠征隊鎧甲（賢者精髓Ⅱ 2Lv）",
-    "exactQuery": "+9 遠征隊鎧甲%賢者精髓Ⅱ 2Lv",
-    "minRefine": 9,
-    "maxRefine": 9,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
-  },
-  {
-    "itemName": "神槍手銀色典藏板",
-    "minRefine": 6,
-    "maxRefine": 7,
-    "maxPrice": 999999999,
-    "priceAlerts": {
-      "6": 7000000,
-      "7": 15000000
-    },
+    "itemName": "靈幻石",
+    "trackBuyAndSell": true,
     "server": "529",
     "enabled": true
   }
