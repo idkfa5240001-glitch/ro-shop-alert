@@ -43,7 +43,19 @@ def truncate_text(text, max_len=6):
         return f"{text[:max_len]}.."
     return text
 
+def send_login_alert():
+    if not WEBHOOK_URL:
+        return
+    embed = {
+        "title": "⚠️ RO 拍賣監控：登入憑證失效！",
+        "description": "系統抓取不到拍賣數據，請前往網頁重新登入一次以延長 Session。",
+        "color": 0xE74C3C,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+    requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
+
 def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count, removed_count):
+    """材料/消耗品專用：販售與收購 雙向各10筆排版"""
     if not WEBHOOK_URL:
         return
 
@@ -64,7 +76,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         "inline": False
     })
 
-    # 1. 販售區塊（由低到高）
+    # 1. 露天販售區塊（由低到高排序）
     if sell_items:
         sell_items.sort(key=lambda x: x.get("itemPrice", 0))
         lowest_sell = sell_items[0].get("itemPrice", 0)
@@ -74,54 +86,4 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         for i, it in enumerate(sell_items[:10], 1):
             p = it.get("itemPrice", 0)
             s = truncate_text(it.get("storeName", "未知攤位"), 6)
-            c = it.get("itemCNT", 1)
-            sell_lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
-
-        if len(sell_items) > 10:
-            sell_lines.append(f"... 尚有 {len(sell_items) - 10} 筆較高販售價格")
-
-        fields.append({
-            "name": f"🛒 【露天販售】（共 {len(sell_items)} 筆）",
-            "value": "\n".join(sell_lines),
-            "inline": False
-        })
-    else:
-        fields.append({
-            "name": "🛒 【露天販售】",
-            "value": "*目前架上無任何販售*",
-            "inline": False
-        })
-
-    # 2. 收購區塊（由高到低，收購價高者優先）
-    if buy_items:
-        buy_items.sort(key=lambda x: x.get("itemPrice", 0), reverse=True)
-        highest_buy = buy_items[0].get("itemPrice", 0)
-        lowest_buy = buy_items[-1].get("itemPrice", 0)
-
-        buy_lines = [f"📈 最高收購: `{highest_buy:,} Z` ｜ 📉 最低收購: `{lowest_buy:,} Z`"]
-        for i, it in enumerate(buy_items[:10], 1):
-            p = it.get("itemPrice", 0)
-            s = truncate_text(it.get("storeName", "未知攤位"), 6)
-            c = it.get("itemCNT", 1)
-            buy_lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
-
-        if len(buy_items) > 10:
-            buy_lines.append(f"... 尚有 {len(buy_items) - 10} 筆較低收購價格")
-
-        fields.append({
-            "name": f"💰 【露天收購】（共 {len(buy_items)} 筆）",
-            "value": "\n".join(buy_lines),
-            "inline": False
-        })
-    else:
-        fields.append({
-            "name": "💰 【露天收購】",
-            "value": "*目前無任何收購店家*",
-            "inline": False
-        })
-
-    total_count = len(sell_items) + len(buy_items)
-    embed = {
-        "title": f"💎 【材料雙向行情】{item_name}",
-        "description": f"目前市場共 **{total_count}** 筆交易資訊（販售 {len(sell_items)} / 收購 {len(buy_items)}）",
-        "color":
+            c
