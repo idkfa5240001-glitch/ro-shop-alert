@@ -76,7 +76,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         "inline": False
     })
 
-    # 1. 露天販售
+    # 1. 露天販售（低到高）
     if sell_items:
         sell_items.sort(key=lambda x: x.get("itemPrice", 0))
         lowest_sell = sell_items[0].get("itemPrice", 0)
@@ -104,7 +104,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
             "inline": False
         })
 
-    # 2. 露天收購
+    # 2. 露天收購（高到低）
     if buy_items:
         buy_items.sort(key=lambda x: x.get("itemPrice", 0), reverse=True)
         highest_buy = buy_items[0].get("itemPrice", 0)
@@ -206,27 +206,69 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
     }
     post_discord({"embeds": [embed]}, item_name)
 
-def search_item_with_pages(page, query_text):
-    captured_items = []
+def determine_is_buy(item):
+    """
+    精確判定是否為收購：
+    1. 遍歷 item 中所有 key，若 value 出現「收購」字樣即判定為收購
+    2. 若有 dealType/type 為數值 1 或 '1'，官方代表收購
+    3. 攤位名稱有「收」且價格顯著偏低時輔助
+    """
+    for k, v in item.items():
+        v_str = str(v).strip()
+        if "收購" in v_str or v_str == "收":
+            return True
 
-    def handle_response(response):
-        if "forAjax_shopDeal" in response.url:
-            try:
-                data = response.json()
-                items = data.get("dt")
-                if items:
-                    captured_items.extend(items)
-            except Exception:
-                pass
+    # 檢查常用欄位
+    for col in ["dealType", "DealType", "type", "Type", "TradeType", "tradeType", "deal_type"]:
+        if col in item:
+            val = str(item[col]).strip()
+            if val in ["1", "buy", "Buy"]:
+                return True
+            if val in ["2", "sell", "Sell"]:
+                return False
 
-    page.on("response", handle_response)
+    return False
 
+def scrape_dom_table(page):
+    """直接解析當前頁面表格中真正的 6 欄 HTML，100% 依最後一欄文字判斷"""
+    return page.evaluate("""() => {
+        const rows = document.querySelectorAll('table tbody tr');
+        const list = [];
+        rows.forEach(tr => {
+            const cols = tr.querySelectorAll('td');
+            if (cols.length >= 6) {
+                const sName = cols[0].innerText.trim();
+                const iName = cols[1].innerText.trim();
+                const pText = cols[3].innerText.replace(/[^0-9]/g, '');
+                const cText = cols[4].innerText.replace(/[^0-9]/g, '');
+                const dType = cols[5].innerText.trim(); // '收購' 或 '販售'
+                
+                list.push({
+                    storeName: sName,
+                    itemName: iName,
+                    itemPrice: parseInt(pText, 10) || 0,
+                    itemCNT: parseInt(cText, 10) || 1,
+                    isBuy: dType.includes('收')
+                });
+            }
+        });
+        return list;
+    }""")
+
+def search_item(page, query_text):
     page.fill("#txb_KeyWord", "")
     page.fill("#txb_KeyWord", query_text)
     page.wait_for_timeout(1000)
     page.keyboard.press("Enter")
     page.wait_for_timeout(7000)
 
+    all_items = []
+    
+    # 抓取第一頁 DOM
+    dom_items = scrape_dom_table(page)
+    all_items.extend(dom_items)
+
+    # 翻頁 (第 2~5 頁)
     page_click_script = (
         "(pageNum) => {"
         "  const allNodes = Array.from(document.querySelectorAll('a, button, span, li'));"
@@ -244,25 +286,11 @@ def search_item_with_pages(page, query_text):
         has_page = page.evaluate(page_click_script, p_num)
         if has_page:
             page.wait_for_timeout(6000)
+            all_items.extend(scrape_dom_table(page))
         else:
             break
 
-    page.remove_listener("response", handle_response)
-    return captured_items
-
-def is_buy_deal(item):
-    for key in ["dealType", "DealType", "tradeType", "TradeType", "type", "deal_type"]:
-        val = str(item.get(key, "")).strip()
-        if "收" in val or val in ["1", "buy", "Buy"]:
-            return True
-        if "販" in val or val in ["2", "sell", "Sell"]:
-            return False
-
-    store = str(item.get("storeName", ""))
-    if store.startswith("收") or "高收" in store or "收購" in store:
-        return True
-
-    return False
+    return all_items
 
 def main():
     if not os.path.exists("watchlist.json"):
@@ -315,13 +343,14 @@ def main():
             max_refine = target.get("maxRefine", 10 if not is_card else 0)
 
             print(f"\n🔍 查詢: {item_name} (送出字串: {query_text})")
-            captured_items = search_item_with_pages(page, query_text)
-            print(f"📦 收到原始數據: {len(captured_items)} 筆")
+            captured_items = search_item(page, query_text)
+            print(f"📦 收到數據筆數: {len(captured_items)}")
 
+            # 去重
             unique_items = []
             seen_ids = set()
             for it in captured_items:
-                uid = str(it.get("SSI2")) if it.get("SSI2") else f"{it.get('storeName')}_{it.get('itemPrice')}_{it.get('itemRefining')}_{it.get('itemCNT')}"
+                uid = f"{it.get('storeName')}_{it.get('itemPrice')}_{it.get('itemCNT')}_{it.get('isBuy')}"
                 if uid not in seen_ids:
                     seen_ids.add(uid)
                     unique_items.append(it)
@@ -332,14 +361,14 @@ def main():
                 for it in unique_items:
                     raw_name = it.get("itemName", "")
                     if raw_name == item_name:
-                        if is_buy_deal(it):
+                        if it.get("isBuy"):
                             buy_items.append(it)
                         else:
                             sell_items.append(it)
 
                 all_tracked = sell_items + buy_items
                 current_keys = {
-                    f"{it.get('itemName')}_{it.get('itemPrice')}_{it.get('storeName')}"
+                    f"{it.get('itemName')}_{it.get('itemPrice')}_{it.get('storeName')}_{it.get('isBuy')}"
                     for it in all_tracked
                 }
                 current_snapshots[item_name] = list(current_keys)
@@ -358,7 +387,7 @@ def main():
                     p = it.get("itemPrice", 0)
                     raw_name = it.get("itemName", "")
 
-                    if is_buy_deal(it):
+                    if it.get("isBuy"):
                         continue
 
                     if exact_query:
@@ -394,5 +423,4 @@ def main():
         })
     print("\n🏁 任務完成！")
 
-# 直接執行進入點
 main()
