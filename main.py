@@ -35,8 +35,7 @@ def save_snapshot(snapshot_dict):
     with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
         json.dump(snapshot_dict, f, ensure_ascii=False, indent=2)
 
-def truncate_text(text, max_len=5):
-    """通用字串截斷函數"""
+def truncate_text(text, max_len=6):
     if not text:
         return ""
     text = str(text).strip()
@@ -44,19 +43,7 @@ def truncate_text(text, max_len=5):
         return f"{text[:max_len]}.."
     return text
 
-def send_login_alert():
-    if not WEBHOOK_URL:
-        return
-    embed = {
-        "title": "⚠️ RO 拍賣監控：登入憑證失效！",
-        "description": "系統抓取不到拍賣數據，請前往網頁重新登入一次以延長 Session。",
-        "color": 0xE74C3C,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-    requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
-
 def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count, removed_count):
-    """專門處理材料/消耗品之 販售與收購 雙向 10 筆列表排版"""
     if not WEBHOOK_URL:
         return
 
@@ -77,7 +64,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         "inline": False
     })
 
-    # 1. 販售區塊（由低到高排序）
+    # 1. 販售區塊（由低到高）
     if sell_items:
         sell_items.sort(key=lambda x: x.get("itemPrice", 0))
         lowest_sell = sell_items[0].get("itemPrice", 0)
@@ -86,7 +73,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         sell_lines = [f"📉 最低: `{lowest_sell:,} Z` ｜ 📈 最高: `{highest_sell:,} Z`"]
         for i, it in enumerate(sell_items[:10], 1):
             p = it.get("itemPrice", 0)
-            s = truncate_text(it.get("storeName", "未知攤位"), 5)
+            s = truncate_text(it.get("storeName", "未知攤位"), 6)
             c = it.get("itemCNT", 1)
             sell_lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
 
@@ -105,7 +92,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
             "inline": False
         })
 
-    # 2. 收購區塊（由高到低排序，收購出價最高者排前面）
+    # 2. 收購區塊（由高到低，收購價高者優先）
     if buy_items:
         buy_items.sort(key=lambda x: x.get("itemPrice", 0), reverse=True)
         highest_buy = buy_items[0].get("itemPrice", 0)
@@ -114,7 +101,7 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
         buy_lines = [f"📈 最高收購: `{highest_buy:,} Z` ｜ 📉 最低收購: `{lowest_buy:,} Z`"]
         for i, it in enumerate(buy_items[:10], 1):
             p = it.get("itemPrice", 0)
-            s = truncate_text(it.get("storeName", "未知攤位"), 5)
+            s = truncate_text(it.get("storeName", "未知攤位"), 6)
             c = it.get("itemCNT", 1)
             buy_lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
 
@@ -137,294 +124,4 @@ def send_material_buy_sell_alert(sell_items, buy_items, target_config, new_count
     embed = {
         "title": f"💎 【材料雙向行情】{item_name}",
         "description": f"目前市場共 **{total_count}** 筆交易資訊（販售 {len(sell_items)} / 收購 {len(buy_items)}）",
-        "color": 0x2ECC71 if (new_count > 0 or removed_count > 0) else 0x3498DB,
-        "fields": fields,
-        "footer": {
-            "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
-        },
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-    requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
-
-def send_summary_alert(matched_items, target_config, new_items_count, removed_items_count):
-    if not WEBHOOK_URL:
-        return
-
-    item_name = target_config["itemName"]
-    is_card = item_name.endswith("卡片")
-    min_r = target_config.get("minRefine", 0)
-    max_r = target_config.get("maxRefine", 10)
-
-    is_multi_refine = (not is_card) and (max_r > min_r) and (max_r > 0)
-
-    diff_texts = []
-    if new_items_count > 0:
-        diff_texts.append(f"🟢 **新增上架**: {new_items_count} 筆")
-    if removed_items_count > 0:
-        diff_texts.append(f"🔴 **已售出/下架**: {removed_items_count} 筆")
-    diff_summary = " | ".join(diff_texts) if diff_texts else "⚪ **架上狀況**: 價格與數量無變動（持平）"
-
-    fields = [
-        {
-            "name": "🔔 本次異動備註",
-            "value": diff_summary,
-            "inline": False
-        }
-    ]
-
-    DIVIDER_LINE = "──────────────────"
-
-    if is_card:
-        title = f"🃏 【卡片行情】{item_name}"
-        if matched_items:
-            matched_items.sort(key=lambda x: x.get("itemPrice", 0))
-            lowest_item = matched_items[0]
-            highest_item = matched_items[-1]
-
-            lines = []
-            for i, it in enumerate(matched_items[:10], 1):
-                p = it.get("itemPrice", 0)
-                s = truncate_text(it.get("storeName", "未知攤位"), 5)
-                c = it.get("itemCNT", 1)
-                lines.append(f"**{i}.** `{p:,} Z` (x{c}) ｜ *{s}*")
-
-            if len(matched_items) > 10:
-                lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
-
-            fields.append({"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
-        else:
-            fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
-
-    elif not is_multi_refine:
-        refine_tag = f"+{min_r} " if (min_r > 0 and not item_name.startswith("+")) else ""
-        title = f"🛡️ 【裝備行情】{refine_tag}{item_name}"
-        if matched_items:
-            matched_items.sort(key=lambda x: x.get("itemPrice", 0))
-            lowest_item = matched_items[0]
-            highest_item = matched_items[-1]
-
-            lines = []
-            for i, it in enumerate(matched_items[:10], 1):
-                p = it.get("itemPrice", 0)
-                r = it.get("itemRefining", 0)
-                s = truncate_text(it.get("storeName", "未知攤位"), 5)
-                c = it.get("itemCNT", 1)
-
-                slots = [it.get(f"slot_{k}") for k in range(1, 5) if it.get(f"slot_{k}")]
-                slot_t = f" ({truncate_text('/'.join(slots), 12)})" if slots else ""
-
-                r_str = f"`+{r}` " if r > 0 else ""
-                lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ *{s}*{slot_t}")
-
-            if len(matched_items) > 10:
-                lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
-
-            fields.append({"name": "📉 架上最低價", "value": f"**{lowest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📈 架上最高價", "value": f"**{highest_item.get('itemPrice', 0):,} Z**", "inline": True})
-            fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
-        else:
-            fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何販售*", "inline": False})
-
-    embed = {
-        "title": title,
-        "description": f"目前架上共 **{len(matched_items)}** 筆符合條件的商品（30 分鐘定時巡查）",
-        "color": 0x2ECC71 if (new_items_count > 0 or removed_items_count > 0) else 0x3498DB,
-        "fields": fields,
-        "footer": {
-            "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
-        },
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-    requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
-
-def search_item_with_pages(page, query_text):
-    captured_items = []
-
-    def handle_response(response):
-        if "forAjax_shopDeal" in response.url:
-            try:
-                data = response.json()
-                items = data.get("dt")
-                if items:
-                    captured_items.extend(items)
-            except Exception:
-                pass
-
-    page.on("response", handle_response)
-
-    page.fill("#txb_KeyWord", "")
-    page.fill("#txb_KeyWord", query_text)
-    page.wait_for_timeout(1000)
-    page.keyboard.press("Enter")
-    page.wait_for_timeout(7000)
-
-    # 翻頁 (2~5 頁) - 採用標準字串避免多行語法溢出
-    page_click_script = (
-        "(pageNum) => {"
-        "  const allNodes = Array.from(document.querySelectorAll('a, button, span, li'));"
-        "  const pageNode = allNodes.find(el => el.children.length === 0 && el.textContent.trim() === String(pageNum));"
-        "  if (pageNode) {"
-        "    pageNode.scrollIntoView();"
-        "    pageNode.click();"
-        "    return true;"
-        "  }"
-        "  return false;"
-        "}"
-    )
-
-    for p_num in range(2, 6):
-        has_page = page.evaluate(page_click_script, p_num)
-        if has_page:
-            page.wait_for_timeout(6000)
-        else:
-            break
-
-    page.remove_listener("response", handle_response)
-    return captured_items
-
-def main():
-    if not os.path.exists("watchlist.json"):
-        print("未找到 watchlist.json 設定檔")
-        return
-
-    with open("watchlist.json", "r", encoding="utf-8") as f:
-        watchlist = json.load(f)
-
-    active_targets = [t for t in watchlist if t.get("enabled", True)]
-    if not active_targets:
-        print("無啟用的追蹤品項")
-        return
-
-    last_data = load_last_snapshot()
-    last_snapshots = last_data.get("snapshots", {})
-    current_time = time.time()
-    current_snapshots = {}
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
-        )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}
-        )
-
-        if COOKIE_STR:
-            context.add_cookies(parse_cookies(COOKIE_STR))
-
-        page = context.new_page()
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-
-        print("開啟露天拍賣平台...")
-        page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(8000)
-
-        for target in active_targets:
-            item_name = target["itemName"]
-            is_card = item_name.endswith("卡片")
-            exact_query = target.get("exactQuery")
-            track_buy_sell = target.get("trackBuyAndSell", False)
-
-            if exact_query:
-                query_text = exact_query
-            elif is_card:
-                query_text = f'"{item_name}"'
-            else:
-                query_text = item_name
-
-            max_price = target.get("maxPrice", 999999999)
-            min_refine = target.get("minRefine", 0)
-            max_refine = target.get("maxRefine", 10 if not is_card else 0)
-
-            print(f"\n🔍 正在查詢：{item_name} (送出字串: {query_text})")
-
-            captured_items = search_item_with_pages(page, query_text)
-
-            # 去重處理
-            unique_items = []
-            seen_ids = set()
-            for it in captured_items:
-                dt = str(it.get("dealType") or it.get("DealType") or it.get("TradeType") or it.get("type") or "").strip()
-                uid = str(it.get("SSI2")) if it.get("SSI2") else f"{it.get('storeName')}_{it.get('itemPrice')}_{it.get('itemRefining')}_{dt}"
-                if uid not in seen_ids:
-                    seen_ids.add(uid)
-                    it["_deal_type_str"] = dt
-                    unique_items.append(it)
-
-            if track_buy_sell:
-                # 靈幻石：分類 販售 vs 收購
-                sell_items = []
-                buy_items = []
-                for it in unique_items:
-                    raw_name = it.get("itemName", "")
-                    if raw_name == item_name:
-                        dt = it.get("_deal_type_str", "")
-                        if "收" in dt or dt in ["1", "Buy", "buy"]:
-                            buy_items.append(it)
-                        else:
-                            sell_items.append(it)
-
-                all_tracked = sell_items + buy_items
-                current_keys = {
-                    f"{it.get('itemName')}_{it.get('_deal_type_str')}_{it.get('itemPrice')}_{it.get('storeName')}"
-                    for it in all_tracked
-                }
-                current_snapshots[item_name] = list(current_keys)
-
-                last_keys = set(last_snapshots.get(item_name, []))
-                new_items_count = len(current_keys - last_keys) if last_keys else 0
-                removed_items_count = len(last_keys - current_keys) if last_keys else 0
-
-                print(f"🎯 執行雙向報價：販售 {len(sell_items)} 筆 / 收購 {len(buy_items)} 筆（新增 {new_items_count}，下架 {removed_items_count}）")
-                send_material_buy_sell_alert(sell_items, buy_items, target, new_items_count, removed_items_count)
-
-            else:
-                # 一般單品與卡片：排除收購，只抓販售
-                matched_items = []
-                for it in unique_items:
-                    r = it.get("itemRefining", 0)
-                    p = it.get("itemPrice", 0)
-                    raw_name = it.get("itemName", "")
-                    dt = it.get("_deal_type_str", "")
-
-                    if "收" in dt or dt in ["1", "Buy", "buy"]:
-                        continue
-
-                    if exact_query:
-                        if (min_refine <= r <= max_refine or min_refine == 0) and p <= max_price:
-                            matched_items.append(it)
-                    elif is_card:
-                        if raw_name == item_name and p <= max_price:
-                            matched_items.append(it)
-                    else:
-                        if (raw_name == item_name or raw_name.startswith(f"{item_name} ")) and (min_refine <= r <= max_refine) and (p <= max_price):
-                            matched_items.append(it)
-
-                snapshot_id = exact_query if exact_query else item_name
-                current_keys = {
-                    f"{it.get('itemName')}_+{it.get('itemRefining', 0)}_{it.get('itemPrice')}_{it.get('storeName')}"
-                    for it in matched_items
-                }
-                current_snapshots[snapshot_id] = list(current_keys)
-
-                last_keys = set(last_snapshots.get(snapshot_id, []))
-                new_items_count = len(current_keys - last_keys) if last_keys else 0
-                removed_items_count = len(last_keys - current_keys) if last_keys else 0
-
-                print(f"🎯 執行定時報價：架上符合 {len(matched_items)} 筆（新增 {new_items_count}，售出/下架 {removed_items_count}）")
-                send_summary_alert(matched_items, target, new_items_count, removed_items_count)
-
-        browser.close()
-
-    if current_snapshots:
-        save_snapshot({
-            "snapshots": current_snapshots,
-            "last_run_time": current_time
-        })
-    print("\n比價任務執行完畢！")
-
-if __name__ == "__main__":
-    main()
+        "color":
