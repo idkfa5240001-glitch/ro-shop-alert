@@ -30,13 +30,5 @@
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
-  },
-  {
-    "itemName": "★輕便鞋 (MDEF+5)",
-    "exactQuery": "★輕便鞋%MDEF +5",
-    "minPrice": 0,
-    "maxPrice": 999999999,
-    "server": "529",
-    "enabled": true
   }
 ]
