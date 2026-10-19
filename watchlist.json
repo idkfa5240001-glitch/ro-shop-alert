@@ -3,13 +3,48 @@
     "itemName": "鴞裊男爵卡片",
     "minRefine": 0,
     "maxRefine": 0,
+    "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
     "enabled": true
   },
   {
-    "itemName": "靈幻石",
-    "trackBuyAndSell": true,
+    "itemName": "★連帽",
+    "exactQuery": "★連帽",
+    "minRefine": 0,
+    "maxRefine": 20,
+    "minPrice": 100000000,
+    "maxPrice": 999999999,
+    "server": "529",
+    "enabled": true
+  },
+  {
+    "itemName": "★鎖子甲",
+    "exactQuery": "★鎖子甲",
+    "minRefine": 0,
+    "maxRefine": 20,
+    "minPrice": 100000000,
+    "maxPrice": 999999999,
+    "server": "529",
+    "enabled": true
+  },
+  {
+    "itemName": "★戰士長靴",
+    "exactQuery": "★戰士長靴",
+    "minRefine": 0,
+    "maxRefine": 20,
+    "minPrice": 100000000,
+    "maxPrice": 999999999,
+    "server": "529",
+    "enabled": true
+  },
+  {
+    "itemName": "★輕便鞋",
+    "exactQuery": "★輕便鞋",
+    "minRefine": 0,
+    "maxRefine": 20,
+    "minPrice": 100000000,
+    "maxPrice": 999999999,
     "server": "529",
     "enabled": true
   }
