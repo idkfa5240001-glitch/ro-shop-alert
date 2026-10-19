@@ -1,8 +1,7 @@
 [
   {
     "itemName": "鴞裊男爵卡片",
-    "minRefine": 0,
-    "maxRefine": 0,
+    "exactQuery": "\"鴞裊男爵卡片\"",
     "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
@@ -11,8 +10,6 @@
   {
     "itemName": "★連帽 (變詠-10%)",
     "exactQuery": "★連帽%變動詠唱減少10%",
-    "minRefine": 0,
-    "maxRefine": 20,
     "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
@@ -21,8 +18,6 @@
   {
     "itemName": "★鋼鐵鎖子甲 (變詠-10%)",
     "exactQuery": "★鋼鐵鎖子甲%變動詠唱減少10%",
-    "minRefine": 0,
-    "maxRefine": 20,
     "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
@@ -31,8 +26,6 @@
   {
     "itemName": "★戰士長靴 (受治癒+10%)",
     "exactQuery": "★戰士長靴%受到治癒量增加10%",
-    "minRefine": 0,
-    "maxRefine": 20,
     "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
@@ -41,8 +34,6 @@
   {
     "itemName": "★輕便鞋 (MDEF+5)",
     "exactQuery": "★輕便鞋%MDEF +5",
-    "minRefine": 0,
-    "maxRefine": 20,
     "minPrice": 0,
     "maxPrice": 999999999,
     "server": "529",
