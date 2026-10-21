@@ -84,4 +84,204 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
             r = it.get("itemRefining", 0)
             base_name = it.get("itemName", item_name)
             enchants = it.get("enchants", [])
-            s = truncate_
+            s = truncate_text(it.get("storeName", "未知攤位"), 6)
+            c = it.get("itemCNT", 1)
+
+            r_str = f"`+{r}` " if r > 0 else ""
+            enchant_str = f" (`{', '.join(enchants)}`)" if enchants else ""
+            lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ {base_name}{enchant_str} ｜ *{s}*")
+
+        if len(matched_items) > 10:
+            lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
+
+        lowest_val = lowest_item.get("itemPrice", 0)
+        highest_val = highest_item.get("itemPrice", 0)
+        fields.append({"name": "📉 架上最低價", "value": f"**{lowest_val:,} Z**", "inline": True})
+        fields.append({"name": "📈 架上最高價", "value": f"**{highest_val:,} Z**", "inline": True})
+        fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
+    else:
+        fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何符合搜尋的販售商品*", "inline": False})
+
+    embed = {
+        "title": title,
+        "description": f"目前架上共 **{len(matched_items)}** 筆商品",
+        "color": 0x2ECC71 if (new_items_count > 0 or removed_items_count > 0) else 0x3498DB,
+        "fields": fields,
+        "footer": {
+            "text": "RO 露天拍賣比價監控 • 30分鐘定期推播"
+        },
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+    post_discord({"embeds": [embed]}, item_name)
+
+def scrape_dom_table(page):
+    js_code = (
+        "() => {"
+        "  const rows = document.querySelectorAll('table tbody tr');"
+        "  const list = [];"
+        "  rows.forEach(tr => {"
+        "    const cols = tr.querySelectorAll('td');"
+        "    if (cols.length >= 6) {"
+        "      const sName = cols[0].innerText.trim();"
+        "      const rawItemText = cols[1].innerText.trim();"
+        "      const lines = rawItemText.split('\\n').map(x => x.trim()).filter(Boolean);"
+        "      let itemRefining = 0;"
+        "      let itemName = lines[0] || '';"
+        "      let enchants = [];"
+        "      if (lines.length > 1) {"
+        "        if (lines[0].startsWith('+')) {"
+        "          itemRefining = parseInt(lines[0].replace('+', ''), 10) || 0;"
+        "          itemName = lines[1] || '';"
+        "          enchants = lines.slice(2);"
+        "        } else {"
+        "          enchants = lines.slice(1);"
+        "        }"
+        "      }"
+        "      const rMatch = itemName.match(/^\\+(\\d+)/);"
+        "      if (rMatch && itemRefining === 0) {"
+        "        itemRefining = parseInt(rMatch[1], 10);"
+        "      }"
+        "      const pText = cols[3].innerText.replace(/[^0-9]/g, '');"
+        "      const cText = cols[4].innerText.replace(/[^0-9]/g, '');"
+        "      const dType = cols[5].innerText.trim();"
+        "      list.push({"
+        "        storeName: sName,"
+        "        itemName: itemName,"
+        "        enchants: enchants,"
+        "        itemPrice: parseInt(pText, 10) || 0,"
+        "        itemCNT: parseInt(cText, 10) || 1,"
+        "        itemRefining: itemRefining,"
+        "        isBuy: dType.includes('收')"
+        "      });"
+        "    }"
+        "  });"
+        "  return list;"
+        "}"
+    )
+    return page.evaluate(js_code)
+
+def search_item(page, query_text):
+    page.fill("#txb_KeyWord", "")
+    page.fill("#txb_KeyWord", query_text)
+    page.wait_for_timeout(500)
+
+    # 點擊官方實際存在的 a 標籤查詢按鈕
+    if page.locator("#a_searchBtn").is_visible():
+        page.locator("#a_searchBtn").click()
+    else:
+        page.keyboard.press("Enter")
+
+    page.wait_for_timeout(7000)
+
+    all_items = []
+    dom_items = scrape_dom_table(page)
+    all_items.extend(dom_items)
+
+    page_click_script = (
+        "(pageNum) => {"
+        "  const allNodes = Array.from(document.querySelectorAll('a, button, span, li'));"
+        "  const pageNode = allNodes.find(el => el.children.length === 0 && el.textContent.trim() === String(pageNum));"
+        "  if (pageNode) {"
+        "    pageNode.scrollIntoView();"
+        "    pageNode.click();"
+        "    return true;"
+        "  }"
+        "  return false;"
+        "}"
+    )
+
+    for p_num in range(2, 6):
+        has_page = page.evaluate(page_click_script, p_num)
+        if has_page:
+            page.wait_for_timeout(6000)
+            all_items.extend(scrape_dom_table(page))
+        else:
+            break
+
+    return all_items
+
+def main():
+    print("▶ 進入 main() 流程")
+    if not os.path.exists("watchlist.json"):
+        print("❌ 未找到 watchlist.json 設定檔")
+        return
+
+    with open("watchlist.json", "r", encoding="utf-8") as f:
+        watchlist = json.load(f)
+
+    active_targets = [t for t in watchlist if t.get("enabled", True)]
+    print(f"📋 追蹤清單已載入，共 {len(active_targets)} 個品項")
+    if not active_targets:
+        print("❌ 無啟用的追蹤品項")
+        return
+
+    last_data = load_last_snapshot()
+    last_snapshots = last_data.get("snapshots", {})
+    current_time = time.time()
+    current_snapshots = {}
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}
+        )
+
+        if COOKIE_STR:
+            context.add_cookies(parse_cookies(COOKIE_STR))
+
+        page = context.new_page()
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+
+        print("🌐 連線至官方拍賣網頁...")
+        page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(8000)
+
+        for target in active_targets:
+            item_name = target["itemName"]
+            query_text = target.get("exactQuery", item_name)
+
+            print(f"\n🔍 查詢: {item_name} (送出指令: {query_text})")
+            captured_items = search_item(page, query_text)
+            print(f"📦 收到數據筆數: {len(captured_items)}")
+
+            unique_items = []
+            seen_ids = set()
+            for it in captured_items:
+                if it.get("isBuy"):
+                    continue
+                uid = f"{it.get('storeName')}_{it.get('itemName')}_{it.get('itemPrice')}_{it.get('itemCNT')}"
+                if uid not in seen_ids:
+                    seen_ids.add(uid)
+                    unique_items.append(it)
+
+            matched_items = unique_items
+            snapshot_id = query_text
+            current_keys = {
+                f"{it.get('itemName')}_+{it.get('itemRefining', 0)}_{it.get('itemPrice')}_{it.get('storeName')}"
+                for it in matched_items
+            }
+            current_snapshots[snapshot_id] = list(current_keys)
+
+            last_keys = set(last_snapshots.get(snapshot_id, []))
+            new_items_count = len(current_keys - last_keys) if last_keys else 0
+            removed_items_count = len(last_keys - current_keys) if last_keys else 0
+
+            print(f"📊 直接推播筆數: {len(matched_items)} 筆")
+            send_summary_alert(matched_items, target, new_items_count, removed_items_count)
+            time.sleep(2)
+
+        browser.close()
+
+    if current_snapshots:
+        save_snapshot({
+            "snapshots": current_snapshots,
+            "last_run_time": current_time
+        })
+    print("\n🏁 任務完成！")
+
+# 確保檔案最後一行有呼叫 main()
+main()
