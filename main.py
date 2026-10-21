@@ -9,20 +9,15 @@ COOKIE_STR = os.environ.get("RO_COOKIE", "")
 SNAPSHOT_FILE = "last_snapshot.json"
 
 print("=== 啟動檢查 ===")
-print(f"Webhook 狀態: {'已設定' if WEBHOOK_URL else '❌ 未讀取到'}")
-print(f"Cookie 狀態: {'已設定' if COOKIE_STR else '未設定'}")
+print("Webhook 狀態: " + ("已設定" if WEBHOOK_URL else "❌ 未讀取到"))
+print("Cookie 狀態: " + ("已設定" if COOKIE_STR else "未設定"))
 
 def parse_cookies(cookie_string):
     cookies = []
     for item in cookie_string.split(";"):
         if "=" in item:
             name, value = item.strip().split("=", 1)
-            cookies.append({
-                "name": name,
-                "value": value,
-                "domain": "event.gnjoy.com.tw",
-                "path": "/"
-            })
+            cookies.append({"name": name, "value": value, "domain": "event.gnjoy.com.tw", "path": "/"})
     return cookies
 
 def load_last_snapshot():
@@ -40,7 +35,7 @@ def save_snapshot(snapshot_dict):
 
 def truncate_text(text, max_len=6):
     text = str(text or "").strip()
-    return f"{text[:max_len]}.." if len(text) > max_len else text
+    return (text[:max_len] + "..") if len(text) > max_len else text
 
 def post_discord(payload, item_name):
     if not WEBHOOK_URL:
@@ -63,17 +58,35 @@ def send_summary_alert(matched_items, target_config, new_items_count, removed_it
         diff_texts.append(f"🔴 售出/下架: {removed_items_count} 筆")
     diff_summary = " | ".join(diff_texts) if diff_texts else "⚪ 架上狀況: 價格與數量持平"
 
-    fields = [
-        {
-            "name": "🔔 本次異動備註",
-            "value": diff_summary,
-            "inline": False
-        }
-    ]
-
+    fields = [{"name": "🔔 本次異動備註", "value": diff_summary, "inline": False}]
     title = f"🃏 【卡片行情】{item_name}" if is_card else f"🛡️ 【裝備行情】{item_name}"
 
     if matched_items:
         matched_items.sort(key=lambda x: x.get("itemPrice", 0))
-        lowest_item = matched_items[0]
-        highest_item =
+        lowest_val = matched_items[0].get("itemPrice", 0)
+        highest_val = matched_items[-1].get("itemPrice", 0)
+
+        lines = []
+        for i, it in enumerate(matched_items[:10], 1):
+            p = it.get("itemPrice", 0)
+            r = it.get("itemRefining", 0)
+            base_name = it.get("itemName", item_name)
+            enchants = it.get("enchants", [])
+            s = truncate_text(it.get("storeName", "未知攤位"), 6)
+            c = it.get("itemCNT", 1)
+
+            r_str = f"`+{r}` " if r > 0 else ""
+            enchant_str = f" (`{', '.join(enchants)}`)" if enchants else ""
+            lines.append(f"**{i}.** {r_str}`{p:,} Z` (x{c}) ｜ {base_name}{enchant_str} ｜ *{s}*")
+
+        if len(matched_items) > 10:
+            lines.append(f"... 尚有 {len(matched_items) - 10} 筆較高價格未顯示")
+
+        fields.append({"name": "📉 架上最低價", "value": f"**{lowest_val:,} Z**", "inline": True})
+        fields.append({"name": "📈 架上最高價", "value": f"**{highest_val:,} Z**", "inline": True})
+        fields.append({"name": "📋 架上販售列表（由低至高）", "value": "\n".join(lines), "inline": False})
+    else:
+        fields.append({"name": "🏪 架上狀況", "value": "*目前架上無任何符合搜尋的販售商品*", "inline": False})
+
+    embed = {
+        "title":
