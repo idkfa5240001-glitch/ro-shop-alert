@@ -15,13 +15,23 @@
     "enabled": true
   },
   {
-    "itemName": "★戰士長靴 (受治療+10%)",
-    "exactQuery": "★戰士長靴%受到治療量增加10%",
+    "itemName": "★戰士長靴 (受治癒+10%)",
+    "exactQuery": "★戰士長靴%受到治癒量增加10%",
     "enabled": true
   },
   {
-    "itemName": "魔法經典",
+    "itemName": "魔法經典 (+0)",
     "exactQuery": "魔法經典",
+    "enabled": true
+  },
+  {
+    "itemName": "魔法經典 (+7)",
+    "exactQuery": "+7%魔法經典",
+    "enabled": true
+  },
+  {
+    "itemName": "魔法經典 (+9)",
+    "exactQuery": "+9%魔法經典",
     "enabled": true
   }
 ]
