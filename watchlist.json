@@ -10,11 +10,6 @@
     "enabled": true
   },
   {
-    "itemName": "★鋼鐵鎖子甲 (變詠-10%)",
-    "exactQuery": "★鋼鐵鎖子甲%變動詠唱減少10%",
-    "enabled": true
-  },
-  {
     "itemName": "★戰士長靴 (受治癒+10%)",
     "exactQuery": "★戰士長靴%受到治癒量增加10%",
     "enabled": true
