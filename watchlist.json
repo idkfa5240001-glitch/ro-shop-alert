@@ -1,32 +1,12 @@
 [
   {
-    "itemName": "鴞裊男爵卡片",
-    "exactQuery": "\"鴞裊男爵卡片\"",
+    "itemName": "次元裂縫石碎片",
+    "exactQuery": "\"次元裂縫石碎片\"",
     "enabled": true
   },
   {
-    "itemName": "★連帽 (變詠-10%)",
-    "exactQuery": "★連帽%變動詠唱減少10%",
-    "enabled": true
-  },
-  {
-    "itemName": "★戰士長靴 (受治癒+10%)",
-    "exactQuery": "★戰士長靴%受到治癒量增加10%",
-    "enabled": true
-  },
-  {
-    "itemName": "魔法經典 (+0)",
-    "exactQuery": "魔法經典",
-    "enabled": true
-  },
-  {
-    "itemName": "魔法經典 (+7)",
-    "exactQuery": "+7%魔法經典",
-    "enabled": true
-  },
-  {
-    "itemName": "魔法經典 (+9)",
-    "exactQuery": "+9%魔法經典",
+    "itemName": "次元裂縫石",
+    "exactQuery": "\"次元裂縫石\"",
     "enabled": true
   }
 ]
