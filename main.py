@@ -193,3 +193,109 @@ def search_item(page, query_text):
     }"""
 
     for p_num in range(2, 6):
+        has_page = page.evaluate(page_click_script, p_num)
+        if has_page:
+            page.wait_for_timeout(6000)
+            all_items.extend(scrape_dom_table(page))
+        else:
+            break
+
+    return all_items
+
+def main():
+    print("▶ 進入 main() 流程")
+    if not os.path.exists("watchlist.json"):
+        print("❌ 未找到 watchlist.json 設定檔")
+        return
+
+    with open("watchlist.json", "r", encoding="utf-8") as f:
+        watchlist = json.load(f)
+
+    active_targets = [t for t in watchlist if t.get("enabled", True)]
+    print(f"📋 追蹤清單已載入，共 {len(active_targets)} 個品項")
+    if not active_targets:
+        print("❌ 無啟用的追蹤品項")
+        return
+
+    last_data = load_last_snapshot()
+    last_snapshots = last_data.get("snapshots", {})
+    current_time = time.time()
+    current_snapshots = {}
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}
+        )
+
+        if COOKIE_STR:
+            context.add_cookies(parse_cookies(COOKIE_STR))
+
+        page = context.new_page()
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+
+        print("🌐 連線至官方拍賣網頁...")
+        page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(8000)
+
+        current_url = page.url
+        page_title = page.title()
+        print(f"🔎 目前網頁標題: {page_title}")
+        print(f"🔎 目前停留網址: {current_url}")
+
+        if "Login" in current_url or "Member" in current_url or page.locator("#txb_KeyWord").count() == 0:
+            reason = "RO_COOKIE 已過期被導向登入頁，或目前網頁正處於維護 / 驗證狀態。"
+            print(f"❌ {reason}")
+            send_error_alert(reason, current_url)
+            browser.close()
+            return
+
+        for target in active_targets:
+            item_name = target["itemName"]
+            query_text = target.get("exactQuery", item_name)
+
+            print(f"\n🔍 查詢: {item_name} (送出指令: {query_text})")
+            captured_items = search_item(page, query_text)
+            print(f"📦 收到數據筆數: {len(captured_items)}")
+
+            unique_items = []
+            seen_ids = set()
+            for it in captured_items:
+                if it.get("isBuy"):
+                    continue
+                uid = f"{it.get('storeName')}_{it.get('itemName')}_{it.get('itemPrice')}_{it.get('itemCNT')}"
+                if uid not in seen_ids:
+                    seen_ids.add(uid)
+                    unique_items.append(it)
+
+            matched_items = unique_items
+            snapshot_id = query_text
+            current_keys = {
+                f"{it.get('itemName')}_+{it.get('itemRefining', 0)}_{it.get('itemPrice')}_{it.get('storeName')}"
+                for it in matched_items
+            }
+            current_snapshots[snapshot_id] = list(current_keys)
+
+            last_keys = set(last_snapshots.get(snapshot_id, []))
+            new_items_count = len(current_keys - last_keys) if last_keys else 0
+            removed_items_count = len(last_keys - current_keys) if last_keys else 0
+
+            print(f"📊 直接推播筆數: {len(matched_items)} 筆")
+            send_summary_alert(matched_items, target, new_items_count, removed_items_count)
+            time.sleep(2)
+
+        browser.close()
+
+    if current_snapshots:
+        save_snapshot({
+            "snapshots": current_snapshots,
+            "last_run_time": current_time
+        })
+    print("\n🏁 任務完成！")
+
+main()
+# === 這是最後一行 ===
