@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import random
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -72,6 +73,34 @@ def send_error_alert_with_screenshot(reason, current_url, page_title, screenshot
             print(f"📡 Discord 異常截圖回傳: HTTP {resp.status_code}")
     except Exception as e:
         print(f"❌ 傳送異常截圖失敗: {e}")
+
+def try_pass_cloudflare(page):
+    for attempt in range(1, 5):
+        title = page.title()
+        if page.locator("#txb_KeyWord").count() > 0:
+            print("✅ 成功進入拍賣搜尋頁面！")
+            return True
+
+        print(f"🛡️ 第 {attempt} 次嘗試通過驗證 (目前標題: {title})...")
+        # 尋找 Cloudflare Turnstile iframe
+        for frame in page.frames:
+            if "challenges.cloudflare.com" in frame.url:
+                try:
+                    box_el = frame.locator("input[type='checkbox'], .cb-i, #challenge-stage").first
+                    box = box_el.bounding_box(timeout=3000)
+                    if box:
+                        target_x = box["x"] + box["width"] / 2 + random.uniform(-3, 3)
+                        target_y = box["y"] + box["height"] / 2 + random.uniform(-3, 3)
+                        page.mouse.move(target_x - 40, target_y + 20, steps=10)
+                        page.wait_for_timeout(random.randint(200, 450))
+                        page.mouse.move(target_x, target_y, steps=12)
+                        page.mouse.click(target_x, target_y)
+                        print("🖱️ 已模擬點擊驗證框，等待跳轉...")
+                except Exception as e:
+                    print(f"⚠️ 嘗試點擊驗證框時略過: {e}")
+        page.wait_for_timeout(6000)
+
+    return page.locator("#txb_KeyWord").count() > 0
 
 def send_summary_alert(matched_items, target_config, new_items_count, removed_items_count):
     item_name = target_config["itemName"]
@@ -238,13 +267,16 @@ def main():
     current_snapshots = {}
 
     with sync_playwright() as p:
+        # 搭配 xvfb-run 使用 headless=False，模擬真實桌面瀏覽器
         browser = p.chromium.launch(
-            headless=True,
+            headless=False,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
         )
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}
+            viewport={"width": 1366, "height": 768},
+            locale="zh-TW",
+            timezone_id="Asia/Taipei"
         )
 
         if COOKIE_STR:
@@ -255,15 +287,17 @@ def main():
 
         print("🌐 連線至官方拍賣網頁...")
         page.goto("https://event.gnjoy.com.tw/RoZ/RoZ_ShopSearch", wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(8000)
+        page.wait_for_timeout(6000)
+
+        passed = try_pass_cloudflare(page)
 
         current_url = page.url
         page_title = page.title()
         print(f"🔎 目前網頁標題: {page_title}")
         print(f"🔎 目前停留網址: {current_url}")
 
-        if page.locator("#txb_KeyWord").count() == 0:
-            reason = "網頁已載入，但找不到搜尋框 (#txb_KeyWord)。可能被擋在驗證頁、彈窗或官網改版。"
+        if not passed:
+            reason = "無法自動通過 Cloudflare 安全驗證（GitHub 雲端機房 IP 被限制）。"
             print(f"❌ {reason}")
             screenshot_file = "error_screen.png"
             page.screenshot(path=screenshot_file, full_page=True)
