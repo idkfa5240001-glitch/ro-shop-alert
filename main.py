@@ -47,16 +47,31 @@ def post_discord(payload, item_name):
     except Exception as e:
         print(f"❌ 請求異常 [{item_name}]: {e}")
 
-def send_error_alert(reason, current_url):
+def send_error_alert_with_screenshot(reason, current_url, page_title, screenshot_path):
+    if not WEBHOOK_URL:
+        return
     ts_now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     embed = {
         "title": "⚠️ 【RO 拍賣監控異常】無法讀取查詢畫面",
-        "description": f"**原因診斷：** {reason}\n**目前停留網址：** `{current_url}`\n\n請至瀏覽器重新登入官網取得最新 `RO_COOKIE` 並更新至 GitHub Secrets。",
+        "description": (
+            f"**原因診斷：** {reason}\n"
+            f"**網頁標題：** `{page_title}`\n"
+            f"**停留網址：** `{current_url}`\n\n"
+            "👇 下方為機器人當下實際看到的網頁畫面截圖："
+        ),
         "color": 0xE74C3C,
+        "image": {"url": "attachment://error_screen.png"},
         "footer": {"text": "RO 露天拍賣比價監控 • 系統狀態警報"},
         "timestamp": ts_now
     }
-    post_discord({"embeds": [embed]}, "系統異常警報")
+    try:
+        with open(screenshot_path, "rb") as img_file:
+            files = {"file": ("error_screen.png", img_file, "image/png")}
+            payload = {"payload_json": json.dumps({"embeds": [embed]})}
+            resp = requests.post(WEBHOOK_URL, data=payload, files=files, timeout=20)
+            print(f"📡 Discord 異常截圖回傳: HTTP {resp.status_code}")
+    except Exception as e:
+        print(f"❌ 傳送異常截圖失敗: {e}")
 
 def send_summary_alert(matched_items, target_config, new_items_count, removed_items_count):
     item_name = target_config["itemName"]
@@ -247,10 +262,12 @@ def main():
         print(f"🔎 目前網頁標題: {page_title}")
         print(f"🔎 目前停留網址: {current_url}")
 
-        if "Login" in current_url or "Member" in current_url or page.locator("#txb_KeyWord").count() == 0:
-            reason = "RO_COOKIE 已過期被導向登入頁，或目前網頁正處於維護 / 驗證狀態。"
+        if page.locator("#txb_KeyWord").count() == 0:
+            reason = "網頁已載入，但找不到搜尋框 (#txb_KeyWord)。可能被擋在驗證頁、彈窗或官網改版。"
             print(f"❌ {reason}")
-            send_error_alert(reason, current_url)
+            screenshot_file = "error_screen.png"
+            page.screenshot(path=screenshot_file, full_page=True)
+            send_error_alert_with_screenshot(reason, current_url, page_title, screenshot_file)
             browser.close()
             return
 
